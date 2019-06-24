@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="ie=edge">
+  <title>Chat</title>
+</head>
+
+<body>
+  <div id="p1">
+    <div>Enter your name:</div>
+    <div>Username: <input type="text" id="username"></div>
+    <div>Password: <input type="password" id="password"></div>
+    <div><button onclick="login()">LOGIN</button></div>
+  </div>
+
+  <div id="p2">
+    <div>List room:</div>
+    <div class="list">
+
+    </div>
+    <div><a id="create-room" onclick="createRoom()">Create room</a></div>
+  </div>
+
+  <div id="p3">
+    <div id="chat-container">
+
+    </div>
+    <div>
+      <textarea id="msg"></textarea>
+      <div id="status"></div>
+      <button id="send" onclick="chat()"></button>
+    </div>
+  </div>
+
+  <script src="https://cdn.socket.io/socket.io-1.2.0.js"></script>
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.4.1/jquery.min.js"></script>
+  <script>
+    var socket, socketId;
+    function initSocket() {
+      socket = io.connect('http://localhost:3000', {
+        query: { token: token },
+        forceNew: true
+      });
+
+      socket.on('connect', function () {
+        if (!socket.connected) {
+          console.log('Connect false');
+          $('#p1').show();
+          $('#p2').hide();
+          return;
+        } else {
+          console.log('Connect true');
+          $('#p1').hide();
+          $('#p2').show();
+        }
+      });
+
+      socket.on("error", function (err) {
+        socket = null;
+        alert(err);
+        console.log(err);
+        $('#p1').show();
+        $('#p2').hide();
+      });
+
+      socket.on('disconnect', function () {
+        console.log('disconnect');
+      });
+
+      // socket.on('data-connect', function (data) {
+      //   $('#p2 .list').html('');
+      //   console.log(data);
+      //   data.list_room.forEach(e => {
+      //     let div = document.createElement('div');
+      //     div.innerHTML = `
+      //           <div> - ${e.name} <a onclick="joinRoom('${e.id}')">JOIN</a></div>
+      //           `;
+      //     $('#p2 .list').append(div);
+      //   });
+      //   socketId = data.connect_id;
+      // });
+
+      socket.on('chat', function (data) {
+        let html = `
+            <div>${data.user} : ${data.msg}</div>
+          `;
+        $('#chat-container').append($('<div>').html(html));
+      });
+
+      socket.on('typing', function (user) {
+        let html = `
+            <div style="font-size:9px">${user} is typing</div>
+          `;
+        $('#status').html($('<div>').html(html));
+        setTimeout(function () {
+          $('#status').html("");
+        }, 1000);
+      });
+    };
+
+    var username, roomId, token;
+    $('#p2').hide();
+    $('#p3').hide();
+
+    function login() {
+      username = $('#username').val();
+      let password = $('#password').val();
+      $.ajax({
+        url: "/login",
+        type: "post",
+        data: {
+          username: username,
+          password: password
+        },
+        success: function (response) {
+          token = response;
+          createName();
+        },
+        error: function (jqXHR, textStatus, errorThrown) {
+          console.log(textStatus, errorThrown);
+        }
+      });
+    }
+
+    function getUsers() {
+      $.ajax({
+        url: "/api/users",
+        type: "post",
+        data: {
+          token: token
+        },
+        dataType: "json",
+        success: function (response) {
+          response.forEach(e => {
+            let div = document.createElement('div');
+            div.innerHTML = `
+                <div> - ${e.name} <a onclick="chatWith('${e._id}')" style="cursor: pointer">CHAT</a></div>
+                `;
+            $('#p2 .list').append(div);
+          });
+        },
+        error: function (jqXHR, textStatus, errorThrown) {
+          console.log(textStatus, errorThrown);
+        }
+      });
+    }
+
+    function createName() {
+      username = $('#username').val();
+      getUsers();
+      initSocket();
+    }
+
+    function createRoom() {
+      if (socket) {
+        alert('create room');
+        socket.emit("create-room", { username: username });
+        $('#p2').hide();
+        $('#p3').show();
+        roomId = socketId;
+      }
+    }
+
+    function chatWith(userId) {
+      
+    }
+
+    function joinRoom(roomJoinId) {
+      if (socket) {
+        socket.emit("join-room", roomJoinId);
+        $('#p2').hide();
+        $('#p3').show();
+        roomId = roomJoinId;
+      }
+    }
+
+    function chat() {
+      let data = {
+        room: roomId,
+        msg: $('#msg').val(),
+        username: username
+      };
+      socket.emit('chat', data);
+      $('#msg').val("");
+    }
+
+    $('#msg').on('input', function () {
+      if (socket) {
+        socket.emit('typing', { room: roomId, user: username });
+      }
+    });
+
+  </script>
+</body>
+
+</html>
