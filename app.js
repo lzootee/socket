@@ -8,6 +8,7 @@ var {UsersDB, UserRepo} = require("./database/userUB");
 var {MessagesDB, MessagesRepo} = require("./database/messageDB");
 var {RoomsDB, RoomRepo} = require("./database/roomDB");
 var Encryption = require("./core/encrypt");
+var Env = require("./core/env");
 
 app.use(bodyParser.urlencoded({extended: true}));
 
@@ -131,3 +132,8 @@ MongoDB.connectDB().then(() => {
 http.listen(port, function () {
   console.log('listening on *:' + port);
 });
+
+if (!Env.get("APP_KEY")) {
+  console.log("\x1b[31m%s\x1b[0m", "APP KEY is empty");
+  process.exit()
+}
