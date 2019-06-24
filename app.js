@@ -39,19 +39,13 @@ app.post('/api/users', async function (req, res) {
   }
 });
 
-app.post('/api/create-room', async function (req, res) {
+app.post('/api/msg', async function (req, res) {
   let token = req.body.token;
   let user = JSON.parse(Encryption.decrypt(token));
   if (UserRepo.login(user.username, user.password)) {
-    let room = {
-      name: user.username,
-      created_by: user.username,
-      user_in_room: [user.username],
-      created_at: new Date(),
-      deleted: false
-    }
-    RoomRepo.create(room);
-    res.send("success");
+    let msg = await MessagesRepo.getInRoom(req.body.room_id);
+    res.setHeader('Content-Type', 'application/json');
+    res.send(JSON.stringify(msg));
   } else {
     res.send("error");
     res.status(500);
@@ -73,13 +67,38 @@ const ioSocket = io.use(function(socket, next){
 });
 
 ioSocket.on('connection', function (socket) {
+  let user = JSON.parse(Encryption.decrypt(socket.handshake.query.token));
+  delete user.password;
+
   let dataConnect = {
-    list_room : [],
+    user_id : user._id,
     connect_id : socket.id
   }
   socket.emit('data-connect', dataConnect);
 
-  socket.on('join-room', function (room) {
+  socket.on('create-room', async function(data) {
+    let users = data.users ? data.users : [user._id];
+    if (users.length ==2) {
+      let room = await RoomRepo.findRoom2(users[0], users[1]);
+      if (room) {
+        socket.join(room._id);
+        socket.emit("event-join-room", room._id);
+        return;
+      }
+    }
+    let room = {
+      name: data.name ? data.name : user.username,
+      created_by: user._id,
+      user_in_room: users,
+      created_at: new Date(),
+      deleted: false
+    }
+    let roomCreate = await RoomRepo.create(room);
+    socket.join(roomCreate._id);
+    socket.emit("event-join-room", roomCreate._id);
+  })
+
+  socket.on('join-room', function(room) {
     if (checkExistRoom(room)) {
       socket.join(room);
     } else {
@@ -88,12 +107,18 @@ ioSocket.on('connection', function (socket) {
     }
   });
 
-  socket.on('chat', function (data) {
-    io.sockets.in(data.room).emit("chat", {msg: data.msg, user: data.username});
+  socket.on('chat', function(data) {
+    let msg = {
+      user: user,
+      message: data.msg,
+      room_id: data.room,
+    };
+    MessagesRepo.insert(msg);
+    io.sockets.in(data.room).emit("chat", {msg: data.msg, user: user});
   });
 
-  socket.on('typing', function (data) {
-    socket.broadcast.to(data.room).emit('typing', data.user);
+  socket.on('typing', function(data) {
+    socket.broadcast.to(data.room).emit('typing', user.username);
   });
 });
 

@@ -31,7 +31,7 @@
     <div>
       <textarea id="msg"></textarea>
       <div id="status"></div>
-      <button id="send" onclick="chat()"></button>
+      <button id="send" onclick="chat()">SEND</button>
     </div>
   </div>
 
@@ -70,22 +70,22 @@
         console.log('disconnect');
       });
 
-      // socket.on('data-connect', function (data) {
-      //   $('#p2 .list').html('');
-      //   console.log(data);
-      //   data.list_room.forEach(e => {
-      //     let div = document.createElement('div');
-      //     div.innerHTML = `
-      //           <div> - ${e.name} <a onclick="joinRoom('${e.id}')">JOIN</a></div>
-      //           `;
-      //     $('#p2 .list').append(div);
-      //   });
-      //   socketId = data.connect_id;
-      // });
+      socket.on('data-connect', function (data) {
+        currentUserId = data.user_id;
+        socketId = data.connect_id;
+      });
+
+      socket.on("event-join-room", function (data) {
+        currentRoom = data;
+        $('#p2').hide();
+        $('#p3').show();
+        roomId = currentRoom;
+        getMessages();
+      });
 
       socket.on('chat', function (data) {
         let html = `
-            <div>${data.user} : ${data.msg}</div>
+            <div>${data.user.username} : ${data.msg}</div>
           `;
         $('#chat-container').append($('<div>').html(html));
       });
@@ -101,7 +101,7 @@
       });
     };
 
-    var username, roomId, token;
+    var username, roomId, token, currentUserId, currentRoom;
     $('#p2').hide();
     $('#p3').hide();
 
@@ -135,11 +135,37 @@
         dataType: "json",
         success: function (response) {
           response.forEach(e => {
-            let div = document.createElement('div');
-            div.innerHTML = `
-                <div> - ${e.name} <a onclick="chatWith('${e._id}')" style="cursor: pointer">CHAT</a></div>
-                `;
-            $('#p2 .list').append(div);
+            console.log(e._id, currentUserId);
+            if (e._id != currentUserId) {
+              let div = document.createElement('div');
+              div.innerHTML = `
+                  <div> - ${e.name} <a onclick="chatWith('${e._id}')" style="cursor: pointer">CHAT</a></div>
+                  `;
+              $('#p2 .list').append(div);
+            }
+          });
+        },
+        error: function (jqXHR, textStatus, errorThrown) {
+          console.log(textStatus, errorThrown);
+        }
+      });
+    }
+
+    function getMessages() {
+      $.ajax({
+        url: "/api/msg",
+        type: "post",
+        data: {
+          token: token,
+          room_id: roomId
+        },
+        dataType: "json",
+        success: function (response) {
+          response.forEach(e => {
+            let html = `
+              <div>${e.user.username} : ${e.message}</div>
+            `;
+            $('#chat-container').append($('<div>').html(html));
           });
         },
         error: function (jqXHR, textStatus, errorThrown) {
@@ -158,14 +184,14 @@
       if (socket) {
         alert('create room');
         socket.emit("create-room", { username: username });
-        $('#p2').hide();
-        $('#p3').show();
-        roomId = socketId;
       }
     }
 
     function chatWith(userId) {
-      
+      if (socket) {
+        alert('create room');
+        socket.emit("create-room", { users: [currentUserId, userId] });
+      }
     }
 
     function joinRoom(roomJoinId) {
@@ -180,8 +206,7 @@
     function chat() {
       let data = {
         room: roomId,
-        msg: $('#msg').val(),
-        username: username
+        msg: $('#msg').val()
       };
       socket.emit('chat', data);
       $('#msg').val("");
