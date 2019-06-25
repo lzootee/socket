@@ -7,6 +7,7 @@ const UsersSchema = new Schema({
     password: String,
     avatar: String,
     friends: [],
+    rooms: [],
     permission: Number,
     created_at: Date
 });

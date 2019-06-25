@@ -22,6 +22,9 @@ var MessagesRepo = {
             deleted : false
         }
         return await MessagesDB.create(messageObj);
+    },
+    notifyMsg: async (user) => {
+        let msg = MessagesDB.find({ _id: { $in: user.rooms } } );
     }
 }
 module.exports = {MessagesDB, MessagesRepo};
