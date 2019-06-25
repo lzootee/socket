@@ -6,7 +6,7 @@ const MessagesSchema = new Schema({
     message: String,
     room_id: String,
     created_at: Date,
-    deleted: Boolean
+    deleted: {type: Boolean, default: false}
 });
 var MessagesDB = mongoose.model('messages', MessagesSchema);
 var MessagesRepo = {

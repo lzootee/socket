@@ -71,6 +71,7 @@
       });
 
       socket.on('data-connect', function (data) {
+        console.log("get data " + data.user_id)
         currentUserId = data.user_id;
         socketId = data.connect_id;
       });
@@ -135,11 +136,12 @@
         dataType: "json",
         success: function (response) {
           response.forEach(e => {
-            console.log(e._id, currentUserId);
-            if (e._id != currentUserId) {
+            if (e.username != username) {
               let div = document.createElement('div');
               div.innerHTML = `
-                  <div> - ${e.name} <a onclick="chatWith('${e._id}')" style="cursor: pointer">CHAT</a></div>
+                  <div> - ${e.name} <a onclick="chatWith('${e._id}', 0)" style="cursor: pointer">CHAT</a>
+                    <a onclick="chatWith('${e._id}', 1)" style="cursor: pointer">Secret</a>
+                    </div>
                   `;
               $('#p2 .list').append(div);
             }
@@ -176,8 +178,8 @@
 
     function createName() {
       username = $('#username').val();
-      getUsers();
       initSocket();
+      getUsers();
     }
 
     function createRoom() {
@@ -187,10 +189,9 @@
       }
     }
 
-    function chatWith(userId) {
+    function chatWith(userId, isSecret=false) {
       if (socket) {
-        alert('create room');
-        socket.emit("create-room", { users: [currentUserId, userId] });
+        socket.emit("create-room", { type: isSecret ? 1 : 0, user_id: userId});
       }
     }
 

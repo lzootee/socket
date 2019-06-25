@@ -4,7 +4,11 @@ const Schema = mongoose.Schema;
 const UsersSchema = new Schema({
     name: String,
     username: String,
-    password: String
+    password: String,
+    avatar: String,
+    friends: [],
+    permission: Number,
+    created_at: Date
 });
 var UsersDB = mongoose.model('users', UsersSchema);
 var UserRepo = {
@@ -17,6 +21,10 @@ var UserRepo = {
             return user;
         }
         return false;
+    },
+    friendCount: async (username) => {
+        let user = await UsersDB.findOne({username: username});
+        return user.friends.length;
     }
 }
 module.exports = {UsersDB, UserRepo};

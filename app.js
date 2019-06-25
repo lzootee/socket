@@ -4,13 +4,14 @@ var io = require('socket.io')(http);
 var port = process.env.PORT || 3000;
 var bodyParser = require('body-parser');
 var MongoDB = require("./database/MongoDB");
-var {UsersDB, UserRepo} = require("./database/userUB");
-var {MessagesDB, MessagesRepo} = require("./database/messageDB");
-var {RoomsDB, RoomRepo} = require("./database/roomDB");
+var { UsersDB, UserRepo } = require("./database/userUB");
+var { MessagesDB, MessagesRepo } = require("./database/messageDB");
+var { RoomsDB, RoomRepo } = require("./database/roomDB");
 var Encryption = require("./core/encrypt");
 var Env = require("./core/env");
+var Constanst = require("./core/constant");
 
-app.use(bodyParser.urlencoded({extended: true}));
+app.use(bodyParser.urlencoded({ extended: true }));
 
 app.get('/', function (req, res) {
   res.sendFile(__dirname + '/index.html');
@@ -18,6 +19,7 @@ app.get('/', function (req, res) {
 
 app.post('/login', async function (req, res) {
   let user = await UserRepo.login(req.body.username, req.body.password);
+  delete user.friends;
   if (user) {
     let code = Encryption.encrypt(JSON.stringify(user));
     res.send(code);
@@ -53,8 +55,43 @@ app.post('/api/msg', async function (req, res) {
   }
 });
 
-const ioSocket = io.use(function(socket, next){
-  if (socket.handshake.query && socket.handshake.query.token){
+async function personalChat(socket, user, friend_id, isSecret=false) {
+  let room = await RoomRepo.findRoomPersonal(user._id, friend_id, isSecret);
+  if (room) {
+    socket.join(room._id);
+    socket.emit("event-join-room", room._id);
+  } else {
+    room = {
+      name: user.name,
+      created_by: user._id,
+      user_in_room: [user._id, friend_id],
+      type: isSecret ? Constanst.ROOM_TYPE.PERSONAL_CHAT_SECRET : Constanst.ROOM_TYPE.PERSONAL_CHAT,
+      created_at: new Date(),
+      deleted: false
+    }
+    let roomCreate = await RoomRepo.create(room);
+    socket.join(roomCreate._id);
+    socket.emit("event-join-room", roomCreate._id);
+  }
+}
+
+async function groupChat(socket, user, users, isPublic=false) {
+  users = users ? users : [user._id];
+  let room = {
+    name: data.group_name,
+    created_by: user._id,
+    user_in_room: users,
+    type: isPublic? Constanst.ROOM_TYPE.GROUP_CHAT_PUBLIC : Constanst.ROOM_TYPE.GROUP_CHAT_PRIVATE,
+    created_at: new Date(),
+    deleted: false
+  }
+  let roomCreate = await RoomRepo.create(room);
+  socket.join(roomCreate._id);
+  socket.emit("event-join-room", roomCreate._id);
+}
+
+const ioSocket = io.use(function (socket, next) {
+  if (socket.handshake.query && socket.handshake.query.token) {
     let token = socket.handshake.query.token;
     let user = JSON.parse(Encryption.decrypt(token));
     if (UserRepo.login(user.username, user.password)) {
@@ -63,8 +100,8 @@ const ioSocket = io.use(function(socket, next){
       next(new Error('Authentication error'));
     }
   } else {
-      next(new Error('Authentication error'));
-  }    
+    next(new Error('Authentication error'));
+  }
 });
 
 ioSocket.on('connection', function (socket) {
@@ -72,53 +109,68 @@ ioSocket.on('connection', function (socket) {
   delete user.password;
 
   let dataConnect = {
-    user_id : user._id,
-    connect_id : socket.id
+    user_id: user._id,
+    connect_id: socket.id
   }
   socket.emit('data-connect', dataConnect);
 
-  socket.on('create-room', async function(data) {
-    let users = data.users ? data.users : [user._id];
-    if (users.length ==2) {
-      let room = await RoomRepo.findRoom2(users[0], users[1]);
-      if (room) {
-        socket.join(room._id);
-        socket.emit("event-join-room", room._id);
-        return;
-      }
+  socket.on('create-room', async function (data) {
+    switch (data.type) {
+      case Constanst.ROOM_TYPE.PERSONAL_CHAT:
+        personalChat(socket, user, data.user_id);
+        break;
+
+      case Constanst.ROOM_TYPE.PERSONAL_CHAT_SECRET:
+        personalChat(socket, user, data.user_id, true);
+        break;
+
+      case Constanst.ROOM_TYPE.GROUP_CHAT_PUBLIC:
+        if (user.permission != Constanst.ROLE_USER.ADMIN) {
+          socket.emit("Error", "Can't create public group");
+        }
+        groupChat(socket, user, data.users, true);
+        break;
+
+      case Constanst.ROOM_TYPE.GROUP_CHAT_PRIVATE:
+        if (UserRepo.friendCount(user.username) < 10) {
+          socket.emit("Error", "Can't create group");
+        }
+        groupChat(socket, user, data.users);
+        break;
+
+      default:
+        socket.emit("Error", "Can't create group");
+        break;
     }
-    let room = {
-      name: data.name ? data.name : user.username,
-      created_by: user._id,
-      user_in_room: users,
-      created_at: new Date(),
-      deleted: false
-    }
-    let roomCreate = await RoomRepo.create(room);
-    socket.join(roomCreate._id);
-    socket.emit("event-join-room", roomCreate._id);
   })
 
-  socket.on('join-room', function(room) {
+  socket.on('join-room', function (room) {
     if (checkExistRoom(room)) {
       socket.join(room);
+      socket.emit("event-join-room", room);
     } else {
       console.log('Join room failed');
       socket.emit("Error", "Can't join room");
     }
   });
 
-  socket.on('chat', function(data) {
+  socket.on('chat', async function (data) {
     let msg = {
       user: user,
       message: data.msg,
       room_id: data.room,
+      created_at: new Date()
     };
-    MessagesRepo.insert(msg);
-    io.sockets.in(data.room).emit("chat", {msg: data.msg, user: user});
+
+    let room = await RoomsDB.findOne({_id: data.room});
+    if (room.type != Constanst.ROOM_TYPE.PERSONAL_CHAT_SECRET) {
+      MessagesRepo.insert(msg);
+    }
+
+    io.sockets.in(data.room).emit("chat", { msg: data.msg, user: user });
   });
 
-  socket.on('typing', function(data) {
+  socket.on('typing', function (data) {
     socket.broadcast.to(data.room).emit('typing', user.username);
   });
 });
