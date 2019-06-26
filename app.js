@@ -42,6 +42,19 @@ app.post('/api/users', async function (req, res) {
   }
 });
 
+app.post('/api/notify', async function (req, res) {
+  let token = req.body.token;
+  let user = JSON.parse(Encryption.decrypt(token));
+  if (UserRepo.login(user.username, user.password)) {
+    let notify = await MessagesRepo.notifyMsg(user);
+    res.setHeader('Content-Type', 'application/json');
+    res.send(JSON.stringify(notify));
+  } else {
+    res.send("error");
+    res.status(500);
+  }
+});
+
 app.post('/api/msg', async function (req, res) {
   let token = req.body.token;
   let user = JSON.parse(Encryption.decrypt(token));
@@ -74,8 +87,8 @@ async function personalChat(socket, user, friend_id, isSecret=false) {
 
     socket.join(roomCreate._id);
     socket.emit("event-join-room", roomCreate._id);
-    UserRepo.updateRoom(user._id, room._id, new Date);
-    UserRepo.updateRoom(friend_id, room._id, new Date);
+    UserRepo.updateRoom(user._id, roomCreate._id, new Date);
+    UserRepo.updateRoom(friend_id, roomCreate._id, new Date);
   }
 }
 
@@ -95,6 +108,10 @@ async function groupChat(socket, user, users, isPublic=false) {
   UserRepo.updateRoom(user.username, roomCreate._id, new Date);
 }
 
+async function getNotify(user) {
+  return await MessagesRepo.notifyMsg(user);
+}
+
 const ioSocket = io.use(function (socket, next) {
   if (socket.handshake.query && socket.handshake.query.token) {
     let token = socket.handshake.query.token;
@@ -109,7 +126,7 @@ const ioSocket = io.use(function (socket, next) {
   }
 });
 
-ioSocket.on('connection', function (socket) {
+ioSocket.on('connection', async function (socket) {
   let user = JSON.parse(Encryption.decrypt(socket.handshake.query.token));
   delete user.password;
 
@@ -117,6 +134,7 @@ ioSocket.on('connection', function (socket) {
     user_id: user._id,
     connect_id: socket.id
   }
+
   socket.emit('data-connect', dataConnect);
 
   socket.on('create-room', async function (data) {
@@ -150,14 +168,9 @@ ioSocket.on('connection', function (socket) {
   })
 
   socket.on('join-room', function (room) {
-    if (checkExistRoom(room)) {
       socket.join(room);
       socket.emit("event-join-room", room);
       UserRepo.updateRoom(user.username, room, new Date);
-    } else {
-      console.log('Join room failed');
-      socket.emit("Error", "Can't join room");
-    }
   });
 
   socket.on('chat', async function (data) {
@@ -174,6 +187,10 @@ ioSocket.on('connection', function (socket) {
     }
 
     io.sockets.in(data.room).emit("chat", { msg: data.msg, user: user });
+  });
+
+  socket.on('received', async function (data) {
+    UserRepo.updateRoom(user._id, data.room_id, new Date);
   });
 
   socket.on('typing', function (data) {

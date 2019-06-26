@@ -58,10 +58,8 @@ var UserRepo = {
         }
 
         await UsersDB.updateOne({_id: userId}, { $set: {rooms: rooms}} ).then((r)=>{
-            console.log("update room:",r);
             return true;
         },err=>{
-            console.log("update room:",err);
             return false;
         });
     }

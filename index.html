@@ -10,18 +10,20 @@
 
 <body>
   <div id="p1">
-    <div>Enter your name:</div>
     <div>Username: <input type="text" id="username"></div>
     <div>Password: <input type="password" id="password"></div>
     <div><button onclick="login()">LOGIN</button></div>
   </div>
 
   <div id="p2">
-    <div>List room:</div>
+    <div>List user:</div>
     <div class="list">
 
     </div>
-    <div><a id="create-room" onclick="createRoom()">Create room</a></div>
+    <div>Notification</div>
+    <div class="notify-list">
+
+    </div>
   </div>
 
   <div id="p3">
@@ -89,6 +91,7 @@
             <div>${data.user.username} : ${data.msg}</div>
           `;
         $('#chat-container').append($('<div>').html(html));
+        socket.emit("received", { room_id: currentRoom });
       });
 
       socket.on('typing', function (user) {
@@ -119,6 +122,7 @@
         success: function (response) {
           token = response;
           createName();
+          getNotify();
         },
         error: function (jqXHR, textStatus, errorThrown) {
           console.log(textStatus, errorThrown);
@@ -139,12 +143,37 @@
             if (e.username != username) {
               let div = document.createElement('div');
               div.innerHTML = `
-                  <div> - ${e.name} <a onclick="chatWith('${e._id}', 0)" style="cursor: pointer">CHAT</a>
-                    <a onclick="chatWith('${e._id}', 1)" style="cursor: pointer">Secret</a>
+                  <div> - ${e.name} <button onclick="chatWith('${e._id}', 0)" style="cursor: pointer">CHAT</button>
+                    <button onclick="chatWith('${e._id}', 1)" style="cursor: pointer">Secret Chat</button>
                     </div>
                   `;
               $('#p2 .list').append(div);
             }
+          });
+        },
+        error: function (jqXHR, textStatus, errorThrown) {
+          console.log(textStatus, errorThrown);
+        }
+      });
+    }
+
+    function getNotify() {
+      $.ajax({
+        url: "/api/notify",
+        type: "post",
+        data: {
+          token: token
+        },
+        dataType: "json",
+        success: function (response) {
+          response.forEach(e => {
+            let div = document.createElement('div');
+              div.innerHTML = `
+                    <div style="cursor: pointer" onclick="joinRoom('${e.room_id}')">
+                      ${e.name} : (${e.sum})
+                    </div>
+                  `;
+              $('#p2 .notify-list').append(div);
           });
         },
         error: function (jqXHR, textStatus, errorThrown) {
@@ -180,13 +209,6 @@
       username = $('#username').val();
       initSocket();
       getUsers();
-    }
-
-    function createRoom() {
-      if (socket) {
-        alert('create room');
-        socket.emit("create-room", { username: username });
-      }
     }
 
     function chatWith(userId, isSecret=false) {

@@ -1,5 +1,7 @@
 
 var mongoose = require('mongoose');
+var { RoomsDB, RoomRepo } = require("./roomDB");
+
 const Schema = mongoose.Schema;
 
 const MessagesSchema = new Schema({
@@ -26,14 +28,17 @@ var MessagesRepo = {
     },
     notifyMsg: async (user) => {
         let result = [];
-        user.rooms.forEach(async e => {
-            let msg = await MessagesDB.count({ room_id: e.room_id, created_at: { $gt: e.last_seen }});
+
+        for (let i = 0; i < user.rooms.length; i++) {
+            const e = user.rooms[i];
+            let room = await RoomsDB.findOne({ _id: e.room_id});
+            let msg = await MessagesDB.countDocuments({ room_id: e.room_id, created_at: { $gte: e.last_seen }});
             result.push({
                 room_id: e.room_id,
+                name: room.name,
                 sum: msg
             });
-        });
-
+        }
         return result;
     }
 }
