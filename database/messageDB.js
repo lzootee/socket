@@ -1,6 +1,7 @@
 
 var mongoose = require('mongoose');
 const Schema = mongoose.Schema;
+
 const MessagesSchema = new Schema({
     user: Object,
     message: String,
@@ -24,8 +25,16 @@ var MessagesRepo = {
         return await MessagesDB.create(messageObj);
     },
     notifyMsg: async (user) => {
-        let msg = MessagesDB.find({ _id: { $in: user.rooms } } );
-        
+        let result = [];
+        user.rooms.forEach(async e => {
+            let msg = await MessagesDB.count({ room_id: e.room_id, created_at: { $gt: e.last_seen }});
+            result.push({
+                room_id: e.room_id,
+                sum: msg
+            });
+        });
+
+        return result;
     }
 }
 module.exports = {MessagesDB, MessagesRepo};

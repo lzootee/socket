@@ -60,6 +60,7 @@ async function personalChat(socket, user, friend_id, isSecret=false) {
   if (room) {
     socket.join(room._id);
     socket.emit("event-join-room", room._id);
+    UserRepo.updateRoom(user._id, room._id, new Date);
   } else {
     room = {
       name: user.name,
@@ -70,8 +71,11 @@ async function personalChat(socket, user, friend_id, isSecret=false) {
       deleted: false
     }
     let roomCreate = await RoomRepo.create(room);
+
     socket.join(roomCreate._id);
     socket.emit("event-join-room", roomCreate._id);
+    UserRepo.updateRoom(user._id, room._id, new Date);
+    UserRepo.updateRoom(friend_id, room._id, new Date);
   }
 }
 
@@ -88,6 +92,7 @@ async function groupChat(socket, user, users, isPublic=false) {
   let roomCreate = await RoomRepo.create(room);
   socket.join(roomCreate._id);
   socket.emit("event-join-room", roomCreate._id);
+  UserRepo.updateRoom(user.username, roomCreate._id, new Date);
 }
 
 const ioSocket = io.use(function (socket, next) {
@@ -148,6 +153,7 @@ ioSocket.on('connection', function (socket) {
     if (checkExistRoom(room)) {
       socket.join(room);
       socket.emit("event-join-room", room);
+      UserRepo.updateRoom(user.username, room, new Date);
     } else {
       console.log('Join room failed');
       socket.emit("Error", "Can't join room");
